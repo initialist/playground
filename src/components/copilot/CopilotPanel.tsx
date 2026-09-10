@@ -1,12 +1,12 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Code2, History } from 'lucide-react';
+import { Sparkles, Code2, History, AlertCircle, Wrench } from 'lucide-react';
 import { PromptInput } from './PromptInput';
 import { AgentStatusFeed } from './AgentStatusFeed';
 import { CodeEditor } from './CodeEditor';
 import { HistoryViewer } from './HistoryViewer';
-import { GameProject, AgentThoughtStep, AgentStage } from '@/types/playground';
+import { GameProject, AgentThoughtStep, AgentStage, SandboxErrorPayload } from '@/types/playground';
 
 interface CopilotPanelProps {
   currentProject: GameProject;
@@ -17,7 +17,11 @@ interface CopilotPanelProps {
   agentStage: AgentStage;
   streamingStatus: string;
   isGenerating: boolean;
+  lastError: SandboxErrorPayload | null;
   onGenerate: (prompt: string, isIteration: boolean) => void;
+  onCancel: () => void;
+  onTriggerRepair: (error: SandboxErrorPayload) => void;
+  onDismissError: () => void;
   onApplyManualCode: (code: string) => void;
   onSelectVersion: (project: GameProject) => void;
 }
@@ -31,7 +35,11 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
   agentStage,
   streamingStatus,
   isGenerating,
+  lastError,
   onGenerate,
+  onCancel,
+  onTriggerRepair,
+  onDismissError,
   onApplyManualCode,
   onSelectVersion,
 }) => {
@@ -103,9 +111,47 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
         )}
       </div>
 
+      {/* Actionable Error Banner if an issue occurred */}
+      {lastError && !isGenerating && (
+        <div className="p-3 mx-4 mb-2 rounded-xl bg-rose-950/40 border border-rose-500/40 flex flex-col gap-2 shadow-lg animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-rose-300 font-semibold text-xs">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+              <span>Runtime Issue Detected</span>
+            </div>
+            <button
+              onClick={onDismissError}
+              className="text-zinc-500 hover:text-zinc-300 text-xs px-1"
+              title="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="text-zinc-300 text-[11px] font-mono leading-relaxed line-clamp-2">
+            {lastError.message} {lastError.lineno ? `(Line ${lastError.lineno})` : ''}
+          </p>
+          <div className="flex items-center gap-2 pt-0.5">
+            <button
+              onClick={() => onTriggerRepair(lastError)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs shadow-md shadow-violet-600/20 transition-all"
+            >
+              <Wrench className="w-3 h-3" />
+              <span>Auto-Repair with AI</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('code')}
+              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs transition-colors"
+            >
+              Inspect Code
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Prompt Bar */}
       <PromptInput
         onGenerate={onGenerate}
+        onCancel={onCancel}
         isGenerating={isGenerating}
         currentTitle={currentProject.title}
       />

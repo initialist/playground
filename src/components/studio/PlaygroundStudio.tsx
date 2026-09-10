@@ -25,6 +25,8 @@ export function PlaygroundStudio() {
     repairAttempts,
     consoleLogs,
     clearLogs,
+    lastError,
+    setLastError,
     apiKey,
     model,
     saveSettings,
@@ -35,6 +37,8 @@ export function PlaygroundStudio() {
     isShareOpen,
     setIsShareOpen,
     generateGame,
+    cancelOperation,
+    triggerAutoRepair,
     updateCodeManually,
     loadStarter,
     sandboxedHtml,
@@ -103,7 +107,11 @@ export function PlaygroundStudio() {
             agentStage={agentStage}
             streamingStatus={streamingStatus}
             isGenerating={isGenerating}
+            lastError={lastError}
             onGenerate={generateGame}
+            onCancel={cancelOperation}
+            onTriggerRepair={triggerAutoRepair}
+            onDismissError={() => setLastError(null)}
             onApplyManualCode={updateCodeManually}
             onSelectVersion={setCurrentProject}
           />

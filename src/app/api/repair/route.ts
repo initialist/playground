@@ -2,19 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
 const REPAIR_SYSTEM_INSTRUCTION = `You are an automated self-healing debugger in Playground.
-A generated HTML5 game/app crashed during runtime execution or has a syntax error.
+A generated HTML5 game crashed during runtime execution or has a syntax error.
 
 Your job is to diagnose the error and return the corrected, complete, working HTML document.
 
-DIAGNOSTIC RULES:
-1. First output a brief <agent_plan> section explaining what caused the bug and how you fixed it:
-   <agent_plan>
-   [Diagnosis] Exact reason for crash (e.g. unhandled null pointer on canvas context, typo in variable)
-   [Fix] How the bug was resolved
-   </agent_plan>
-2. Follow immediately with the corrected complete HTML document: <!DOCTYPE html> ... </html>.
-3. Ensure no new dependencies are introduced.
-4. Keep all existing gameplay and visual styles intact while fixing the crash.
+RULES:
+1. Output ONLY the complete, corrected, working HTML document starting with <!DOCTYPE html>.
+2. Do NOT output conversational preambles, greetings, or explanations before or after the code.
+3. Fix the specific crash while preserving all existing visuals, gameplay, controls, and sound effects.
+4. Ensure all variables, canvas elements, and handlers are properly defined before use.
 `;
 
 export async function POST(req: NextRequest) {
@@ -37,21 +33,23 @@ export async function POST(req: NextRequest) {
     const ai = new GoogleGenAI({ apiKey });
     const model = requestedModel || process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
-    const repairPrompt = `Game prompt: "${prompt || 'Interactive mini game'}"
+    console.log(`[API/REPAIR] Starting auto-repair with model "${model}" for error: "${error.message}" at line ${error.lineno || 'unknown'}`);
 
-Runtime Error Reported:
-Message: ${error.message}
+    const repairPrompt = `The following HTML5 game crashed with a runtime error.
+Error: "${error.message}"
 Line: ${error.lineno || 'unknown'}
 Column: ${error.colno || 'unknown'}
 Stack trace:
-${error.stack || 'No stack trace provided'}
+${error.stack || 'None'}
 
-Broken Code:
+Game Concept: "${prompt || 'Interactive HTML5 game'}"
+
+Broken HTML Code:
 \`\`\`html
 ${code}
 \`\`\`
 
-Fix this error and return the full working HTML code.`;
+Fix the error and output ONLY the complete, working HTML document:`;
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -61,7 +59,7 @@ Fix this error and return the full working HTML code.`;
             contents: repairPrompt,
             config: {
               systemInstruction: REPAIR_SYSTEM_INSTRUCTION,
-              temperature: 0.3, // Lower temperature for debugging precision
+              temperature: 0.2, // Lower temperature for fast precision
             },
           });
 
@@ -72,8 +70,10 @@ Fix this error and return the full working HTML code.`;
             }
           }
           controller.close();
+          console.log('[API/REPAIR] Stream completed successfully.');
         } catch (err: unknown) {
           const errorMessage = err instanceof Error ? err.message : String(err);
+          console.error('[API/REPAIR] Generation stream error:', errorMessage);
           controller.enqueue(new TextEncoder().encode(`\n[ERROR: ${errorMessage}]`));
           controller.close();
         }
@@ -89,6 +89,7 @@ Fix this error and return the full working HTML code.`;
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Internal server error';
+    console.error('[API/REPAIR] Request handler error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

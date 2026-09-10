@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Send, Sparkles, Wand2, RefreshCw, Layers } from 'lucide-react';
+import { Send, Sparkles, Wand2, Layers } from 'lucide-react';
 
 interface PromptInputProps {
   onGenerate: (prompt: string, isIteration: boolean) => void;
+  onCancel?: () => void;
   isGenerating: boolean;
   currentTitle: string;
 }
@@ -20,6 +21,7 @@ const QUICK_PROMPTS = [
 
 export const PromptInput: React.FC<PromptInputProps> = ({
   onGenerate,
+  onCancel,
   isGenerating,
   currentTitle,
 }) => {
@@ -114,28 +116,31 @@ export const PromptInput: React.FC<PromptInputProps> = ({
             Press <kbd className="px-1 py-0.5 bg-zinc-800 rounded text-[9px] font-mono">Enter ↵</kbd> to build
           </span>
 
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!prompt.trim() || isGenerating}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all ${
-              prompt.trim() && !isGenerating
-                ? 'bg-violet-600 hover:bg-violet-500 shadow-md shadow-violet-500/20 active:scale-95'
-                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-            }`}
-          >
-            {isGenerating ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Building...</span>
-              </>
-            ) : (
-              <>
-                <span>Build with AI</span>
-                <Send className="w-3 h-3" />
-              </>
-            )}
-          </button>
+          {isGenerating ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/20 active:scale-95 transition-all"
+              title="Stop Generation"
+            >
+              <div className="w-2 h-2 rounded-sm bg-white" />
+              <span>Stop / Cancel</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!prompt.trim()}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all ${
+                prompt.trim()
+                  ? 'bg-violet-600 hover:bg-violet-500 shadow-md shadow-violet-500/20 active:scale-95'
+                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              }`}
+            >
+              <span>Build with AI</span>
+              <Send className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 

@@ -26,13 +26,13 @@ export function usePlayground() {
 
   // Agentic Loop State
   const [agentStage, setAgentStage] = useState<AgentStage>('ready');
-  const [thoughtSteps, setThoughtSteps] = useState<AgentThoughtStep[]>(() => [
+  const [thoughtSteps, setThoughtSteps] = useState<AgentThoughtStep[]>([
     {
       id: 'step-init',
       stage: 'ready',
       title: 'Ready',
-      detail: 'Playground loaded with Cosmic Defender starter game.',
-      timestamp: 0,
+      detail: 'Playground studio loaded with Cosmic Defender.',
+      timestamp: 1740000000000,
       status: 'success',
     },
   ]);
@@ -42,9 +42,9 @@ export function usePlayground() {
 
   // Telemetry & Logs
   const [consoleLogs, setConsoleLogs] = useState<ConsoleMessage[]>([]);
-  const [, setLastError] = useState<SandboxErrorPayload | null>(null);
+  const [lastError, setLastError] = useState<SandboxErrorPayload | null>(null);
 
-  // Settings with lazy initializers from localStorage
+  // Settings
   const [apiKey, setApiKey] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(STORAGE_API_KEY) || '';
@@ -62,11 +62,12 @@ export function usePlayground() {
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isShareOpen, setIsShareOpen] = useState<boolean>(false);
 
-  // Diagnostic timer ref
+  // Refs
   const diagnosticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeCodeRef = useRef<string>(currentProject.code);
   const isRepairingRef = useRef<boolean>(false);
   const lastErrorTimeRef = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     activeCodeRef.current = currentProject.code;
@@ -82,7 +83,12 @@ export function usePlayground() {
   };
 
   // Add a thought step helper
-  const addThought = useCallback((stage: AgentStage, title: string, detail?: string, status: 'pending' | 'in_progress' | 'success' | 'error' = 'in_progress') => {
+  const addThought = useCallback((
+    stage: AgentStage,
+    title: string,
+    detail?: string,
+    status: 'pending' | 'in_progress' | 'success' | 'error' = 'in_progress'
+  ) => {
     const newStep: AgentThoughtStep = {
       id: `thought-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       stage,
@@ -101,13 +107,25 @@ export function usePlayground() {
     );
   }, []);
 
+  // Cancel any ongoing generation or repair
+  const cancelOperation = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+    isRepairingRef.current = false;
+    setStreamingStatus('');
+    setAgentStage('ready');
+    addThought('ready', 'Operation Cancelled', 'Generation or repair was cancelled by user.', 'success');
+  }, [addThought]);
+
   // Sandbox Health Watcher
   const startDiagnosticWatch = useCallback(() => {
     if (diagnosticTimeoutRef.current) clearTimeout(diagnosticTimeoutRef.current);
 
     setAgentStage('testing');
     diagnosticTimeoutRef.current = setTimeout(() => {
-      // If 2 seconds pass without an error, the build is healthy!
       setAgentStage('ready');
       setRepairAttempts(0);
       setThoughtSteps(prev => {
@@ -129,7 +147,7 @@ export function usePlayground() {
         setAgentStage('error');
         addThought(
           'error',
-          'Runtime Error Caught',
+          'Runtime Issue Detected',
           `"${errorPayload.message}" (Line ${errorPayload.lineno || '?'}). Configure your Gemini API key in Settings to enable automatic self-healing.`,
           'error'
         );
@@ -141,15 +159,18 @@ export function usePlayground() {
         addThought(
           'error',
           'Auto-Repair Limit Reached',
-          `Could not automatically resolve "${errorPayload.message}". Manual review recommended in the Code tab.`,
+          `Could not automatically resolve "${errorPayload.message}". You can inspect or modify the code directly in the Code tab.`,
           'error'
         );
         return;
       }
 
       isRepairingRef.current = true;
+      setIsGenerating(true);
       setRepairAttempts(prev => prev + 1);
       setAgentStage('healing');
+      setStreamingStatus(`Diagnosing: "${errorPayload.message}"...`);
+
       const stepId = addThought(
         'healing',
         `Auto-Repairing Runtime Error (Attempt ${repairAttempts + 1}/2)`,
@@ -157,10 +178,15 @@ export function usePlayground() {
         'in_progress'
       );
 
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+
       try {
         const response = await fetch('/api/repair', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             code: activeCodeRef.current,
             error: errorPayload,
@@ -187,16 +213,18 @@ export function usePlayground() {
           accumulated += decoder.decode(value, { stream: true });
 
           const parsed = parseAIStream(accumulated);
-          if (parsed.code) {
-            setStreamingStatus(`Auto-repair streaming... (${parsed.code.length} chars)`);
-          }
+          const currentLen = parsed.code.length || accumulated.length;
+          setStreamingStatus(`Auto-repair streaming... (${(currentLen / 1024).toFixed(1)} KB)`);
+          updateThought(stepId, {
+            detail: `Synthesizing bug fix... (${(currentLen / 1024).toFixed(1)} KB received)`,
+          });
         }
 
         const finalParsed = parseAIStream(accumulated);
         if (finalParsed.code) {
           updateThought(stepId, {
             status: 'success',
-            detail: `Patched error: "${errorPayload.message}". Re-verifying in sandbox...`,
+            detail: `Resolved "${errorPayload.message}". Reloading in sandbox...`,
           });
 
           const updatedProject: GameProject = {
@@ -207,19 +235,31 @@ export function usePlayground() {
           };
           setCurrentProject(updatedProject);
           setHistory(prev => [updatedProject, ...prev]);
+          setLastError(null);
           startDiagnosticWatch();
         } else {
-          throw new Error('No valid HTML returned in repair response');
+          throw new Error('Could not extract valid HTML code from repair stream');
         }
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        updateThought(stepId, {
-          status: 'error',
-          detail: `Repair failed: ${msg}`,
-        });
+        if (controller.signal.aborted) {
+          updateThought(stepId, {
+            status: 'error',
+            detail: 'Repair timed out after 45 seconds or was cancelled.',
+          });
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          updateThought(stepId, {
+            status: 'error',
+            detail: `Repair failed: ${msg}`,
+          });
+        }
         setAgentStage('error');
       } finally {
+        clearTimeout(timeoutId);
+        abortControllerRef.current = null;
         isRepairingRef.current = false;
+        setIsGenerating(false);
+        setStreamingStatus('');
       }
     },
     [repairAttempts, currentProject, apiKey, model, addThought, updateThought, startDiagnosticWatch]
@@ -234,8 +274,8 @@ export function usePlayground() {
       if (data.type === 'PLAYGROUND_ERROR') {
         const payload: SandboxErrorPayload = data.error;
         const now = Date.now();
-        // Debounce rapid duplicate errors (within 1 second)
-        if (now - lastErrorTimeRef.current < 1000) return;
+        // Debounce rapid duplicate errors (within 1.5 seconds)
+        if (now - lastErrorTimeRef.current < 1500) return;
         lastErrorTimeRef.current = now;
 
         setLastError(payload);
@@ -249,7 +289,7 @@ export function usePlayground() {
           },
         ]);
 
-        // Auto-heal if we are not currently generating from scratch and not already repairing
+        // Auto-heal if an API key is available and not already busy
         if (!isGenerating && !isRepairingRef.current) {
           triggerAutoRepair(payload);
         }
@@ -280,7 +320,7 @@ export function usePlayground() {
     setIsGenerating(true);
     setRepairAttempts(0);
     setLastError(null);
-    setStreamingStatus('Initializing generation...');
+    setStreamingStatus('Initializing Gemini 3.5 Flash Lite...');
     setAgentStage('planning');
 
     const planStepId = addThought(
@@ -291,11 +331,15 @@ export function usePlayground() {
     );
 
     let codeStepId = '';
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s generation timeout
 
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           prompt: promptText,
           currentCode: isIteration ? currentProject.code : undefined,
@@ -337,7 +381,13 @@ export function usePlayground() {
         }
 
         if (codeStarted && parsed.code) {
-          setStreamingStatus(`Generating game assets & loop... (${parsed.code.length} bytes)`);
+          const kb = (parsed.code.length / 1024).toFixed(1);
+          setStreamingStatus(`Generating game assets & loop... (${kb} KB)`);
+          if (codeStepId) {
+            updateThought(codeStepId, {
+              detail: `Streaming code: ${kb} KB generated...`,
+            });
+          }
         }
       }
 
@@ -349,7 +399,7 @@ export function usePlayground() {
       if (codeStepId) {
         updateThought(codeStepId, {
           status: 'success',
-          detail: `Generated complete ${finalParsed.code.length} byte game application.`,
+          detail: `Generated complete ${(finalParsed.code.length / 1024).toFixed(1)} KB game application.`,
         });
       }
 
@@ -372,10 +422,17 @@ export function usePlayground() {
       addThought('testing', 'Verifying Sandbox Diagnostics', 'Testing execution in isolated frame...', 'in_progress');
       startDiagnosticWatch();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setAgentStage('error');
-      addThought('error', 'Generation Error', msg, 'error');
+      if (controller.signal.aborted) {
+        setAgentStage('error');
+        addThought('error', 'Generation Timed Out', 'The request timed out or was cancelled by user.', 'error');
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        setAgentStage('error');
+        addThought('error', 'Generation Error', msg, 'error');
+      }
     } finally {
+      clearTimeout(timeoutId);
+      abortControllerRef.current = null;
       setIsGenerating(false);
       setStreamingStatus('');
     }
@@ -390,6 +447,7 @@ export function usePlayground() {
     };
     setCurrentProject(updated);
     setHistory(prev => [updated, ...prev]);
+    setLastError(null);
     startDiagnosticWatch();
   };
 
@@ -404,7 +462,7 @@ export function usePlayground() {
           stage: 'ready',
           title: `Loaded ${found.title}`,
           detail: found.prompt,
-          timestamp: Date.now(),
+          timestamp: 1740000000000,
           status: 'success',
         },
       ]);
@@ -434,6 +492,8 @@ export function usePlayground() {
     repairAttempts,
     consoleLogs,
     clearLogs,
+    lastError,
+    setLastError,
     apiKey,
     model,
     saveSettings,
@@ -444,6 +504,8 @@ export function usePlayground() {
     isShareOpen,
     setIsShareOpen,
     generateGame,
+    cancelOperation,
+    triggerAutoRepair,
     updateCodeManually,
     loadStarter,
     sandboxedHtml,
