@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   RotateCcw,
   Maximize2,
@@ -14,7 +14,10 @@ import {
   VolumeX,
   Trash2,
   AlertCircle,
-  Gamepad
+  Gamepad,
+  Ratio,
+  Scaling,
+  Sparkles
 } from 'lucide-react';
 import { DeviceMode, ConsoleMessage } from '@/types/playground';
 
@@ -35,12 +38,91 @@ export const GameStage: React.FC<GameStageProps> = ({
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const stageAreaRef = useRef<HTMLDivElement>(null);
+
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
   const [consoleFilter, setConsoleFilter] = useState<'all' | 'log' | 'error'>('all');
   const [showVirtualControls, setShowVirtualControls] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Scaling options: 'fit' (strict aspect ratio containment) or 'stretch' (fill container)
+  const [scaleMode, setScaleMode] = useState<'fit' | 'stretch'>('fit');
+  const [isPixelated, setIsPixelated] = useState(false);
+
+  // Measure stage area dynamically
+  const [stageDimensions, setStageDimensions] = useState({ width: 800, height: 600 });
+
+  useEffect(() => {
+    if (!stageAreaRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect) {
+          setStageDimensions({
+            width: Math.floor(entry.contentRect.width),
+            height: Math.floor(entry.contentRect.height),
+          });
+        }
+      }
+    });
+    observer.observe(stageAreaRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Compute exact frame sizing to strictly fit available stage area without any overflow
+  const frameGeometry = useMemo(() => {
+    if (scaleMode === 'stretch' || deviceMode === 'fluid') {
+      return {
+        width: '100%',
+        height: '100%',
+        computedW: stageDimensions.width,
+        computedH: stageDimensions.height,
+        ratioLabel: 'Fluid',
+        wrapperClass: 'w-full h-full rounded-none border-none',
+      };
+    }
+
+    const paddingX = 32;
+    const paddingY = 32;
+    const availW = Math.max(120, stageDimensions.width - paddingX);
+    const availH = Math.max(120, stageDimensions.height - paddingY);
+
+    let targetRatio = 16 / 9;
+    let ratioLabel = '16:9';
+    let wrapperClass = 'rounded-2xl border-2 border-zinc-800 shadow-2xl';
+
+    if (deviceMode === 'mobile') {
+      targetRatio = 9 / 16;
+      ratioLabel = '9:16';
+      wrapperClass = 'rounded-[38px] border-[5px] border-zinc-800 shadow-2xl';
+    } else if (deviceMode === 'arcade') {
+      targetRatio = 1 / 1;
+      ratioLabel = '1:1';
+      wrapperClass = 'rounded-2xl border-2 border-zinc-800 shadow-2xl';
+    }
+
+    // Fit within both availW and availH
+    let w = availW;
+    let h = w / targetRatio;
+
+    if (h > availH) {
+      h = availH;
+      w = h * targetRatio;
+    }
+
+    const finalW = Math.round(w);
+    const finalH = Math.round(h);
+
+    return {
+      width: `${finalW}px`,
+      height: `${finalH}px`,
+      computedW: finalW,
+      computedH: finalH,
+      ratioLabel,
+      wrapperClass,
+    };
+  }, [stageDimensions, deviceMode, scaleMode]);
 
   // Restart game
   const handleRestart = () => {
@@ -51,7 +133,6 @@ export const GameStage: React.FC<GameStageProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
-        // Only prevent if focus is not in an editable area
         const target = e.target as HTMLElement;
         if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
           e.preventDefault();
@@ -62,6 +143,16 @@ export const GameStage: React.FC<GameStageProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Notify iframe on dimensions change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        iframeRef.current.contentWindow.dispatchEvent(new Event('resize'));
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [frameGeometry.computedW, frameGeometry.computedH, deviceMode]);
 
   // Fullscreen toggle
   const toggleFullscreen = () => {
@@ -90,21 +181,6 @@ export const GameStage: React.FC<GameStageProps> = ({
     return l.type !== 'error';
   });
 
-  // Calculate container aspect ratio styling
-  const getDeviceStyles = () => {
-    switch (deviceMode) {
-      case 'mobile':
-        return 'w-[375px] h-[667px] max-h-[90%] rounded-[36px] border-4 border-zinc-800 shadow-2xl overflow-hidden';
-      case 'arcade':
-        return 'w-[520px] h-[520px] max-h-[90%] rounded-2xl border-2 border-zinc-800 shadow-2xl overflow-hidden';
-      case 'desktop':
-        return 'w-[840px] h-[520px] max-w-[95%] max-h-[90%] rounded-2xl border-2 border-zinc-800 shadow-2xl overflow-hidden';
-      case 'fluid':
-      default:
-        return 'w-full h-full rounded-none border-none';
-    }
-  };
-
   return (
     <div
       ref={containerRef}
@@ -113,55 +189,92 @@ export const GameStage: React.FC<GameStageProps> = ({
       {/* Top Toolbar */}
       <div className="h-11 border-b border-zinc-800/80 px-4 flex items-center justify-between bg-zinc-900/40 backdrop-blur-sm z-20">
         {/* Device Mode Switcher */}
-        <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
-          <button
-            onClick={() => setDeviceMode('desktop')}
-            className={`p-1.5 rounded text-xs transition-colors ${
-              deviceMode === 'desktop'
-                ? 'bg-zinc-800 text-violet-400 font-medium'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-            title="Desktop 16:9"
-          >
-            <Monitor className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setDeviceMode('arcade')}
-            className={`p-1.5 rounded text-xs transition-colors ${
-              deviceMode === 'arcade'
-                ? 'bg-zinc-800 text-violet-400 font-medium'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-            title="Arcade Cabinet 1:1"
-          >
-            <Square className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setDeviceMode('mobile')}
-            className={`p-1.5 rounded text-xs transition-colors ${
-              deviceMode === 'mobile'
-                ? 'bg-zinc-800 text-violet-400 font-medium'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-            title="Mobile Portrait 9:16"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setDeviceMode('fluid')}
-            className={`p-1.5 rounded text-xs transition-colors ${
-              deviceMode === 'fluid'
-                ? 'bg-zinc-800 text-violet-400 font-medium'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-            title="Fill Container"
-          >
-            <Maximize className="w-3.5 h-3.5" />
-          </button>
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800">
+            <button
+              onClick={() => setDeviceMode('desktop')}
+              className={`p-1.5 rounded text-xs transition-colors ${
+                deviceMode === 'desktop'
+                  ? 'bg-zinc-800 text-violet-400 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Desktop (16:9 Widescreen)"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setDeviceMode('arcade')}
+              className={`p-1.5 rounded text-xs transition-colors ${
+                deviceMode === 'arcade'
+                  ? 'bg-zinc-800 text-violet-400 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Arcade Cabinet (1:1 Square)"
+            >
+              <Square className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setDeviceMode('mobile')}
+              className={`p-1.5 rounded text-xs transition-colors ${
+                deviceMode === 'mobile'
+                  ? 'bg-zinc-800 text-violet-400 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Mobile Portrait (9:16)"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setDeviceMode('fluid')}
+              className={`p-1.5 rounded text-xs transition-colors ${
+                deviceMode === 'fluid'
+                  ? 'bg-zinc-800 text-violet-400 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Fill Entire Stage"
+            >
+              <Maximize className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Real-time Resolution Badge */}
+          <div className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900/80 border border-zinc-800/80 text-[10px] font-mono text-zinc-400">
+            <Ratio className="w-3 h-3 text-violet-400" />
+            <span>
+              {frameGeometry.computedW} × {frameGeometry.computedH} ({frameGeometry.ratioLabel})
+            </span>
+          </div>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5">
+          {/* Fit vs Stretch Mode Toggle */}
+          <button
+            onClick={() => setScaleMode(scaleMode === 'fit' ? 'stretch' : 'fit')}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md border text-xs transition-colors ${
+              scaleMode === 'stretch'
+                ? 'bg-violet-600/20 border-violet-500/40 text-violet-300'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}
+            title={scaleMode === 'fit' ? 'Switch to Stretch Fill' : 'Switch to Aspect Ratio Fit'}
+          >
+            <Scaling className="w-3.5 h-3.5" />
+            <span className="hidden md:inline text-[11px] capitalize">{scaleMode}</span>
+          </button>
+
+          {/* Crisp Pixel Rendering Toggle */}
+          <button
+            onClick={() => setIsPixelated(!isPixelated)}
+            className={`p-1.5 rounded-md border text-xs transition-colors ${
+              isPixelated
+                ? 'bg-violet-600/20 border-violet-500/40 text-violet-300'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}
+            title={isPixelated ? 'Pixel Art Sharpness: ON' : 'Pixel Art Sharpness: OFF'}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+          </button>
+
           {/* Virtual Mobile Controls toggle */}
           <button
             onClick={() => setShowVirtualControls(!showVirtualControls)}
@@ -229,12 +342,21 @@ export const GameStage: React.FC<GameStageProps> = ({
       </div>
 
       {/* Center Stage Container */}
-      <div className="flex-1 relative flex items-center justify-center p-4 bg-radial from-zinc-900/40 to-zinc-950 overflow-hidden">
-        {/* Visual Device Frame Wrapper */}
-        <div className={`relative transition-all duration-300 flex flex-col items-center justify-center ${getDeviceStyles()}`}>
+      <div
+        ref={stageAreaRef}
+        className="flex-1 relative flex items-center justify-center p-4 bg-radial from-zinc-900/30 to-zinc-950 overflow-hidden"
+      >
+        {/* Visual Device Frame Wrapper with Dynamic Resolution Sizing */}
+        <div
+          style={{
+            width: frameGeometry.width,
+            height: frameGeometry.height,
+          }}
+          className={`relative transition-all duration-150 flex flex-col items-center justify-center overflow-hidden bg-black ${frameGeometry.wrapperClass}`}
+        >
           {/* Optional Mobile Camera Notch */}
-          {deviceMode === 'mobile' && (
-            <div className="absolute top-2 w-28 h-4 bg-zinc-800 rounded-full z-20 pointer-events-none" />
+          {deviceMode === 'mobile' && scaleMode === 'fit' && (
+            <div className="absolute top-2.5 w-24 h-3.5 bg-zinc-800/90 rounded-full z-20 pointer-events-none" />
           )}
 
           {/* Sandboxed Game Iframe */}
@@ -243,7 +365,10 @@ export const GameStage: React.FC<GameStageProps> = ({
             ref={iframeRef}
             srcDoc={sandboxedHtml}
             sandbox="allow-scripts allow-modals allow-downloads allow-pointer-lock allow-same-origin"
-            className="w-full h-full border-none bg-black"
+            style={{
+              imageRendering: isPixelated ? 'pixelated' : 'auto',
+            }}
+            className="w-full h-full border-none bg-black block flex-1"
             title="Playground Game Preview"
           />
 

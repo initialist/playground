@@ -47,6 +47,21 @@ REQUIREMENTS:
 5. ERROR-RESILIENT:
    - Do NOT use un-standardized or experimental browser APIs.
    - Ensure all variables, canvas contexts, and DOM elements are properly checked and defined before use.
+
+6. RESPONSIVE FULL-FRAME SCALING & ZERO LETTERBOXING:
+   - The game MUST fill 100% of the viewport and dynamically adapt to any resolution (Desktop 16:9, Mobile 9:16 portrait, Arcade 1:1 square, or Fluid container).
+   - NEVER hardcode fixed pixel outer constraints (e.g. avoid max-width: 600px with empty black borders).
+   - In CSS:
+     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+     canvas { display: block; width: 100%; height: 100%; }
+   - In JavaScript:
+     function resize() {
+       canvas.width = window.innerWidth;
+       canvas.height = window.innerHeight;
+     }
+     window.addEventListener('resize', resize);
+     resize();
+   - All positions, physics bounds, and UI elements must adapt dynamically to canvas.width and canvas.height.
 `;
 
 export async function POST(req: NextRequest) {

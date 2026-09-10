@@ -32,9 +32,7 @@ export const STARTER_GAMES: GameProject[] = [
       position: relative;
       width: 100%;
       height: 100%;
-      max-width: 600px;
-      max-height: 800px;
-      box-shadow: 0 0 50px rgba(99, 102, 241, 0.2);
+      overflow: hidden;
     }
     canvas {
       display: block;
@@ -120,9 +118,12 @@ export const STARTER_GAMES: GameProject[] = [
     let H = canvas.height = 640;
 
     function resize() {
-      const rect = canvas.getBoundingClientRect();
-      W = canvas.width = rect.width || 480;
-      H = canvas.height = rect.height || 640;
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      if (player) {
+        player.x = Math.max(player.size, Math.min(W - player.size, player.x));
+        player.y = H - 70;
+      }
     }
     window.addEventListener('resize', resize);
     resize();
@@ -431,17 +432,17 @@ export const STARTER_GAMES: GameProject[] = [
       color: #fafafa;
       font-family: system-ui, sans-serif;
       overflow: hidden;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      width: 100vw;
     }
     canvas {
       display: block;
+      width: 100%;
+      height: 100%;
       background: #09090b;
-      box-shadow: 0 0 40px rgba(139, 92, 246, 0.25);
-      border-radius: 8px;
     }
   </style>
 </head>
@@ -451,22 +452,14 @@ export const STARTER_GAMES: GameProject[] = [
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
 
-    let W = canvas.width = 700;
-    let H = canvas.height = 460;
+    let W = canvas.width = window.innerWidth || 700;
+    let H = canvas.height = window.innerHeight || 460;
 
     function resize() {
-      const maxW = Math.min(window.innerWidth - 32, 720);
-      const maxH = Math.min(window.innerHeight - 32, 480);
-      const ratio = 700 / 460;
-      if (maxW / maxH > ratio) {
-        canvas.height = maxH;
-        canvas.width = maxH * ratio;
-      } else {
-        canvas.width = maxW;
-        canvas.height = maxW / ratio;
-      }
-      W = canvas.width;
-      H = canvas.height;
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      p1Y = Math.min(H - paddleH, Math.max(0, p1Y));
+      p2Y = Math.min(H - paddleH, Math.max(0, p2Y));
     }
     window.addEventListener('resize', resize);
     resize();

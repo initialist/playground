@@ -240,10 +240,30 @@ export const SANDBOX_HARNESS_SCRIPT = `
     window.PlaygroundControls.keys[e.code] = false;
   });
 
+  // 5. VIEWPORT & CANVAS SCALING OBSERVER
+  function handleViewportResize() {
+    window.dispatchEvent(new Event('resize'));
+  }
+  window.addEventListener('resize', handleViewportResize);
+
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    if (document.body) {
+      observer.observe(document.body);
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        if (document.body) observer.observe(document.body);
+      });
+    }
+  }
+
   // Signal ready to parent frame after initial render tick
   function notifyReady() {
     setTimeout(function() {
       window.parent.postMessage({ type: 'PLAYGROUND_READY' }, '*');
+      window.dispatchEvent(new Event('resize'));
     }, 100);
   }
 
@@ -255,22 +275,38 @@ export const SANDBOX_HARNESS_SCRIPT = `
 })();
 `;
 
+const VIEWPORT_RESET_STYLE = `
+<style id="playground-viewport-reset">
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+  *, *::before, *::after {
+    box-sizing: inherit;
+  }
+</style>
+`;
+
 /**
- * Injects the sandbox harness script into an HTML string.
+ * Injects the sandbox harness script and viewport reset into an HTML string.
  */
 export function injectSandboxHarness(html: string): string {
   if (!html || typeof html !== 'string') return '';
 
-  const harnessTag = `<script id="playground-harness">\n${SANDBOX_HARNESS_SCRIPT}\n</script>`;
+  const injection = `${VIEWPORT_RESET_STYLE}\n<script id="playground-harness">\n${SANDBOX_HARNESS_SCRIPT}\n</script>`;
 
   // Try injecting into <head>
   if (html.includes('<head>')) {
-    return html.replace('<head>', `<head>\n${harnessTag}`);
+    return html.replace('<head>', `<head>\n${injection}`);
   }
   // Try injecting before <html>
   if (html.includes('<html>')) {
-    return html.replace('<html>', `<html>\n<head>${harnessTag}</head>`);
+    return html.replace('<html>', `<html>\n<head>${injection}</head>`);
   }
   // Fallback: prepend to the document
-  return `${harnessTag}\n${html}`;
+  return `${injection}\n${html}`;
 }
