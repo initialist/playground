@@ -15,7 +15,7 @@ import { injectSandboxHarness } from './sandbox-harness';
 
 const STORAGE_API_KEY = 'playground_gemini_api_key';
 const STORAGE_MODEL = 'playground_gemini_model';
-const DEFAULT_MODEL = 'gemini-2.0-flash-lite';
+const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
 
 export function usePlayground() {
   // Game & Project State

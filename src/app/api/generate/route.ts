@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const model = requestedModel || process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite';
+    const model = requestedModel || process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
     let userPrompt = prompt;
     if (currentCode) {

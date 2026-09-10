@@ -12,9 +12,9 @@ interface SettingsModalProps {
 }
 
 const AVAILABLE_MODELS = [
-  { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', desc: 'Ultra-fast, lowest latency (Recommended)' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'High intelligence & balanced speed' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Standard generation model' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', desc: 'Ultra-fast, lowest latency & high efficiency (Default)' },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', desc: 'High intelligence & complex game logic' },
+  { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', desc: 'Fast generation model' },
   { id: 'custom', name: 'Custom Model ID', desc: 'Enter custom Gemini preview or fine-tuned model name' },
 ];
 
@@ -58,7 +58,7 @@ const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
   const [isSaved, setIsSaved] = useState(false);
 
   const handleSave = () => {
-    const finalModel = selectedModel === 'custom' ? (customModel.trim() || 'gemini-2.0-flash-lite') : selectedModel;
+    const finalModel = selectedModel === 'custom' ? (customModel.trim() || 'gemini-3.5-flash-lite') : selectedModel;
     onSave(localKey.trim(), finalModel);
     setIsSaved(true);
     setTimeout(() => {
