@@ -65,6 +65,8 @@ export function usePlayground() {
   // Diagnostic timer ref
   const diagnosticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeCodeRef = useRef<string>(currentProject.code);
+  const isRepairingRef = useRef<boolean>(false);
+  const lastErrorTimeRef = useRef<number>(0);
 
   useEffect(() => {
     activeCodeRef.current = currentProject.code;
@@ -121,6 +123,19 @@ export function usePlayground() {
   // AUTO REPAIR: Mini Agentic Loop trigger
   const triggerAutoRepair = useCallback(
     async (errorPayload: SandboxErrorPayload) => {
+      if (isRepairingRef.current) return;
+
+      if (!apiKey) {
+        setAgentStage('error');
+        addThought(
+          'error',
+          'Runtime Error Caught',
+          `"${errorPayload.message}" (Line ${errorPayload.lineno || '?'}). Configure your Gemini API key in Settings to enable automatic self-healing.`,
+          'error'
+        );
+        return;
+      }
+
       if (repairAttempts >= 2) {
         setAgentStage('error');
         addThought(
@@ -132,6 +147,7 @@ export function usePlayground() {
         return;
       }
 
+      isRepairingRef.current = true;
       setRepairAttempts(prev => prev + 1);
       setAgentStage('healing');
       const stepId = addThought(
@@ -202,6 +218,8 @@ export function usePlayground() {
           detail: `Repair failed: ${msg}`,
         });
         setAgentStage('error');
+      } finally {
+        isRepairingRef.current = false;
       }
     },
     [repairAttempts, currentProject, apiKey, model, addThought, updateThought, startDiagnosticWatch]
@@ -215,6 +233,11 @@ export function usePlayground() {
 
       if (data.type === 'PLAYGROUND_ERROR') {
         const payload: SandboxErrorPayload = data.error;
+        const now = Date.now();
+        // Debounce rapid duplicate errors (within 1 second)
+        if (now - lastErrorTimeRef.current < 1000) return;
+        lastErrorTimeRef.current = now;
+
         setLastError(payload);
         setConsoleLogs(prev => [
           ...prev,
@@ -226,8 +249,8 @@ export function usePlayground() {
           },
         ]);
 
-        // Auto-heal if we are not currently generating from scratch
-        if (!isGenerating) {
+        // Auto-heal if we are not currently generating from scratch and not already repairing
+        if (!isGenerating && !isRepairingRef.current) {
           triggerAutoRepair(payload);
         }
       } else if (data.type === 'PLAYGROUND_CONSOLE') {
@@ -386,6 +409,8 @@ export function usePlayground() {
         },
       ]);
       setAgentStage('ready');
+      setRepairAttempts(0);
+      isRepairingRef.current = false;
       setLastError(null);
     }
   };

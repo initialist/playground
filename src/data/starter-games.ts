@@ -114,8 +114,27 @@ export const STARTER_GAMES: GameProject[] = [
     const subText = document.getElementById('subText');
     const startBtn = document.getElementById('startBtn');
 
-    let W = canvas.width = 480;
-    let H = canvas.height = 640;
+    let W = canvas.width = window.innerWidth || 480;
+    let H = canvas.height = window.innerHeight || 640;
+
+    let state = 'menu'; // menu, playing, gameover
+    let score = 0;
+    let lives = 3;
+    let particles = [];
+    let bullets = [];
+    let enemies = [];
+    let stars = [];
+    let lastEnemySpawn = 0;
+
+    const player = {
+      x: W / 2,
+      y: H - 70,
+      size: 26,
+      speed: 7,
+      vx: 0,
+      movingLeft: false,
+      movingRight: false
+    };
 
     function resize() {
       W = canvas.width = window.innerWidth;
@@ -128,15 +147,6 @@ export const STARTER_GAMES: GameProject[] = [
     window.addEventListener('resize', resize);
     resize();
 
-    let state = 'menu'; // menu, playing, gameover
-    let score = 0;
-    let lives = 3;
-    let particles = [];
-    let bullets = [];
-    let enemies = [];
-    let stars = [];
-    let lastEnemySpawn = 0;
-
     for (let i = 0; i < 60; i++) {
       stars.push({
         x: Math.random() * W,
@@ -146,16 +156,6 @@ export const STARTER_GAMES: GameProject[] = [
         alpha: 0.3 + Math.random() * 0.7
       });
     }
-
-    const player = {
-      x: W / 2,
-      y: H - 70,
-      size: 26,
-      speed: 7,
-      vx: 0,
-      movingLeft: false,
-      movingRight: false
-    };
 
     function shoot() {
       if (state !== 'playing') return;
@@ -455,15 +455,6 @@ export const STARTER_GAMES: GameProject[] = [
     let W = canvas.width = window.innerWidth || 700;
     let H = canvas.height = window.innerHeight || 460;
 
-    function resize() {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
-      p1Y = Math.min(H - paddleH, Math.max(0, p1Y));
-      p2Y = Math.min(H - paddleH, Math.max(0, p2Y));
-    }
-    window.addEventListener('resize', resize);
-    resize();
-
     const paddleW = 12;
     const paddleH = 80;
     let p1Y = H / 2 - paddleH / 2;
@@ -480,6 +471,15 @@ export const STARTER_GAMES: GameProject[] = [
       speed: 6,
       trail: []
     };
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      p1Y = Math.min(H - paddleH, Math.max(0, p1Y));
+      p2Y = Math.min(H - paddleH, Math.max(0, p2Y));
+    }
+    window.addEventListener('resize', resize);
+    resize();
 
     window.addEventListener('mousemove', (e) => {
       const rect = canvas.getBoundingClientRect();
