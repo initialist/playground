@@ -6,8 +6,8 @@ export const STARTER_GAMES: GameProject[] = [
     title: 'Cosmic Defender',
     prompt: 'A sleek retro arcade space shooter with laser sounds, particle explosions, score, and increasing waves.',
     version: 1,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: 1740000000000,
+    updatedAt: 1740000000000,
     code: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -417,8 +417,8 @@ export const STARTER_GAMES: GameProject[] = [
     title: 'Neon Cyber Pong',
     prompt: 'A futuristic cyber pong game with glowing neon trails, smart AI opponent, sound synthesis, and score multiplier.',
     version: 1,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: 1740000000000,
+    updatedAt: 1740000000000,
     code: `<!DOCTYPE html>
 <html lang="en">
 <head>
