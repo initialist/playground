@@ -1,0 +1,56 @@
+// Prisma schema for Playground
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  passwordHash String
+  avatar       String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  apps         App[]
+}
+
+model App {
+  id             String         @id @default(uuid())
+  title          String
+  description    String?
+  code           String
+  instructions   String?
+  category       String         @default("tools") // tools, simulators, interactive, art
+  tags           String?        // comma-separated tags
+  isPublic       Boolean        @default(true)
+  views          Int            @default(0)
+  likes          Int            @default(0)
+  forks          Int            @default(0)
+  forkedFromId   String?
+  authorId       String?
+  authorName     String?        @default("Anonymous Creator")
+  author         User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  agentHistories AgentHistory[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([category])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model AgentHistory {
+  id                 String   @id @default(uuid())
+  appId              String
+  app                App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  prompt             String
+  agentPlan          String?
+  verificationStatus String?  @default("passed")
+  timestamp          DateTime @default(now())
+
+  @@index([appId])
+}

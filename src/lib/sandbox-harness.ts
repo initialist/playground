@@ -1,10 +1,12 @@
 /**
- * Injected sandbox harness script for Playground games and mini apps.
+ * Injected sandbox harness script for Playground mini-apps and tools.
  * Provides:
  * 1. Error telemetry (window.onerror & unhandledrejection -> parent postMessage)
  * 2. Console message forwarding (console.log/warn/error -> parent postMessage)
- * 3. Procedural Web Audio synthesizer (window.PlaygroundAudio)
- * 4. Responsive canvas auto-scaling & mobile touch controls helper (window.PlaygroundControls)
+ * 3. 4-Point Runtime Verification Probe (Canvas, Animation Loop, DOM Paint, Error-free check)
+ * 4. Procedural Web Audio synthesizer (window.PlaygroundAudio)
+ * 5. Touch & Keyboard controls helper (window.PlaygroundControls)
+ * 6. Responsive auto-scaling & viewport reset
  */
 
 export const SANDBOX_HARNESS_SCRIPT = `
@@ -13,8 +15,23 @@ export const SANDBOX_HARNESS_SCRIPT = `
   if (window.__PLAYGROUND_INITIALIZED__) return;
   window.__PLAYGROUND_INITIALIZED__ = true;
 
+  let errorCount = 0;
+  let recordedErrors = [];
+  let rafTicks = 0;
+
+  // Track requestAnimationFrame calls
+  const originalRaf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : null;
+  if (originalRaf) {
+    window.requestAnimationFrame = function(cb) {
+      rafTicks++;
+      return originalRaf(cb);
+    };
+  }
+
   // 1. TELEMETRY: Error Interception
   window.addEventListener('error', function(event) {
+    errorCount++;
+    recordedErrors.push(event.message || 'Script error');
     try {
       window.parent.postMessage({
         type: 'PLAYGROUND_ERROR',
@@ -30,12 +47,15 @@ export const SANDBOX_HARNESS_SCRIPT = `
   });
 
   window.addEventListener('unhandledrejection', function(event) {
+    errorCount++;
+    const reason = event.reason;
+    const msg = reason && reason.message ? reason.message : String(reason);
+    recordedErrors.push(msg);
     try {
-      const reason = event.reason;
       window.parent.postMessage({
         type: 'PLAYGROUND_ERROR',
         error: {
-          message: 'Unhandled Promise Rejection: ' + (reason && reason.message ? reason.message : String(reason)),
+          message: 'Unhandled Promise Rejection: ' + msg,
           stack: reason && reason.stack ? reason.stack : null
         }
       }, '*');
@@ -85,7 +105,58 @@ export const SANDBOX_HARNESS_SCRIPT = `
     forwardConsole('info', args);
   };
 
-  // 3. PROCEDURAL WEB AUDIO SYNTHESIZER (PlaygroundAudio)
+  // 3. 4-POINT RUNTIME VERIFICATION PROBE
+  function runVerificationProbe() {
+    setTimeout(function() {
+      const canvases = document.querySelectorAll('canvas');
+      const hasCanvas = canvases.length > 0;
+      let canvasActive = false;
+
+      if (hasCanvas) {
+        canvases.forEach(function(c) {
+          if (c.width > 0 && c.height > 0) {
+            canvasActive = true;
+          }
+        });
+      }
+
+      const childCount = document.body ? document.body.children.length : 0;
+      const domRendered = childCount > 0;
+      const loopActive = rafTicks > 1;
+
+      let status = 'passed';
+      let summary = 'Mini-app rendered cleanly with 0 console errors.';
+
+      if (errorCount > 0) {
+        status = 'error';
+        summary = 'Encountered ' + errorCount + ' error(s): ' + recordedErrors[0];
+      } else if (hasCanvas && loopActive) {
+        summary = 'Canvas initialized & animation loop active (' + rafTicks + ' frames rendered).';
+      } else if (hasCanvas && !loopActive) {
+        summary = 'Static canvas rendered cleanly.';
+      } else if (domRendered) {
+        summary = 'DOM elements mounted & interactive elements ready.';
+      }
+
+      try {
+        window.parent.postMessage({
+          type: 'PLAYGROUND_VERIFIED',
+          status: status,
+          details: {
+            hasCanvas: hasCanvas,
+            canvasActive: canvasActive,
+            loopActive: loopActive,
+            rafTicks: rafTicks,
+            domRendered: domRendered,
+            errorCount: errorCount,
+            message: summary
+          }
+        }, '*');
+      } catch(e) {}
+    }, 350);
+  }
+
+  // 4. PROCEDURAL WEB AUDIO SYNTHESIZER (PlaygroundAudio)
   let audioCtx = null;
   function getAudioContext() {
     if (!audioCtx) {
@@ -100,7 +171,6 @@ export const SANDBOX_HARNESS_SCRIPT = `
     return audioCtx;
   }
 
-  // Auto-resume audio on first user action
   const resumeAudio = () => {
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();
@@ -134,8 +204,8 @@ export const SANDBOX_HARNESS_SCRIPT = `
 
         case 'coin':
           osc.type = 'sine';
-          osc.frequency.setValueAtTime(987.77, now); // B5
-          osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+          osc.frequency.setValueAtTime(987.77, now);
+          osc.frequency.setValueAtTime(1318.51, now + 0.08);
           gain.gain.setValueAtTime(0.15, now);
           gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
           osc.start(now);
@@ -214,7 +284,7 @@ export const SANDBOX_HARNESS_SCRIPT = `
     }
   };
 
-  // 4. CONTROLS HELPER (PlaygroundControls)
+  // 5. TOUCH & KEYBOARD CONTROLS HELPER
   window.PlaygroundControls = {
     keys: {},
     isMobile: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent),
@@ -240,7 +310,7 @@ export const SANDBOX_HARNESS_SCRIPT = `
     window.PlaygroundControls.keys[e.code] = false;
   });
 
-  // 5. VIEWPORT & CANVAS SCALING OBSERVER
+  // 6. VIEWPORT & CANVAS SCALING OBSERVER
   function handleViewportResize() {
     window.dispatchEvent(new Event('resize'));
   }
@@ -259,11 +329,12 @@ export const SANDBOX_HARNESS_SCRIPT = `
     }
   }
 
-  // Signal ready to parent frame after initial render tick
+  // Signal ready & kick off verification probe
   function notifyReady() {
     setTimeout(function() {
       window.parent.postMessage({ type: 'PLAYGROUND_READY' }, '*');
       window.dispatchEvent(new Event('resize'));
+      runVerificationProbe();
     }, 100);
   }
 
@@ -299,14 +370,11 @@ export function injectSandboxHarness(html: string): string {
 
   const injection = `${VIEWPORT_RESET_STYLE}\n<script id="playground-harness">\n${SANDBOX_HARNESS_SCRIPT}\n</script>`;
 
-  // Try injecting into <head>
   if (html.includes('<head>')) {
     return html.replace('<head>', `<head>\n${injection}`);
   }
-  // Try injecting before <html>
   if (html.includes('<html>')) {
     return html.replace('<html>', `<html>\n<head>${injection}</head>`);
   }
-  // Fallback: prepend to the document
   return `${injection}\n${html}`;
 }

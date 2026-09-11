@@ -5,11 +5,15 @@ import { usePlayground } from '@/lib/use-playground';
 import { Header } from '@/components/layout/Header';
 import { CopilotPanel } from '@/components/copilot/CopilotPanel';
 import { GameStage } from '@/components/stage/GameStage';
-import { SettingsModal } from '@/components/modals/SettingsModal';
 import { ExportModal } from '@/components/modals/ExportModal';
-import { ShareModal } from '@/components/modals/ShareModal';
+import PublishModal from '@/components/PublishModal';
+import { GameProject } from '@/types/playground';
 
-export function PlaygroundStudio() {
+export function PlaygroundStudio({
+  initialApp,
+}: {
+  initialApp?: GameProject | null;
+}) {
   const {
     currentProject,
     setCurrentProject,
@@ -27,25 +31,20 @@ export function PlaygroundStudio() {
     clearLogs,
     lastError,
     setLastError,
-    apiKey,
-    model,
-    saveSettings,
-    isSettingsOpen,
-    setIsSettingsOpen,
+    isPublishOpen,
+    setIsPublishOpen,
     isExportOpen,
     setIsExportOpen,
-    isShareOpen,
-    setIsShareOpen,
     generateGame,
     cancelOperation,
+    resetToNewApp,
     triggerAutoRepair,
     updateCodeManually,
-    loadStarter,
     sandboxedHtml,
-  } = usePlayground();
+  } = usePlayground(initialApp);
 
-  // Split-pane width state for desktop (in percent, default 38%)
-  const [copilotWidth, setCopilotWidth] = useState(38);
+  // Split-pane width state for desktop (in percent, default 36%)
+  const [copilotWidth, setCopilotWidth] = useState(36);
   const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -54,7 +53,7 @@ export function PlaygroundStudio() {
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const windowWidth = window.innerWidth;
-      const newWidth = Math.max(25, Math.min(65, (moveEvent.clientX / windowWidth) * 100));
+      const newWidth = Math.max(25, Math.min(60, (moveEvent.clientX / windowWidth) * 100));
       setCopilotWidth(newWidth);
     };
 
@@ -69,26 +68,23 @@ export function PlaygroundStudio() {
   };
 
   const handleUpdateTitle = (newTitle: string) => {
-    setCurrentProject(prev => ({
+    setCurrentProject((prev) => ({
       ...prev,
       title: newTitle,
     }));
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 antialiased font-sans">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#fbfbfa] text-slate-900 antialiased font-sans">
       {/* Top Header */}
       <Header
         currentProject={currentProject}
         onUpdateTitle={handleUpdateTitle}
-        onLoadStarter={loadStarter}
+        onNewApp={resetToNewApp}
         agentStage={agentStage}
         repairAttempts={repairAttempts}
-        model={model}
-        hasApiKey={Boolean(apiKey)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenPublish={() => setIsPublishOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
-        onOpenShare={() => setIsShareOpen(true)}
       />
 
       {/* Main Studio Area */}
@@ -96,7 +92,7 @@ export function PlaygroundStudio() {
         {/* Left: Copilot & Code Studio */}
         <div
           style={{ width: `${copilotWidth}%` }}
-          className="h-1/2 md:h-full flex-shrink-0 min-w-[320px] max-w-[800px] flex flex-col z-10"
+          className="h-1/2 md:h-full flex-shrink-0 min-w-[320px] max-w-[700px] flex flex-col z-10 bg-white"
         >
           <CopilotPanel
             currentProject={currentProject}
@@ -110,6 +106,7 @@ export function PlaygroundStudio() {
             lastError={lastError}
             onGenerate={generateGame}
             onCancel={cancelOperation}
+            onNewApp={resetToNewApp}
             onTriggerRepair={triggerAutoRepair}
             onDismissError={() => setLastError(null)}
             onApplyManualCode={updateCodeManually}
@@ -120,14 +117,14 @@ export function PlaygroundStudio() {
         {/* Resizer Splitter (Desktop) */}
         <div
           onMouseDown={handleMouseDown}
-          className={`hidden md:flex w-1.5 hover:w-2 bg-zinc-900 hover:bg-violet-600/50 cursor-col-resize transition-all items-center justify-center relative z-20 select-none ${
-            isDraggingSplitter ? 'bg-violet-600 w-2' : ''
+          className={`hidden md:flex w-1 hover:w-1.5 bg-slate-200 hover:bg-indigo-500 cursor-col-resize transition-all items-center justify-center relative z-20 select-none ${
+            isDraggingSplitter ? 'bg-indigo-600 w-1.5' : ''
           }`}
         >
-          <div className="w-0.5 h-8 bg-zinc-700 rounded-full pointer-events-none" />
+          <div className="w-0.5 h-8 bg-slate-400 rounded-full pointer-events-none" />
         </div>
 
-        {/* Right: Game Stage Sandbox */}
+        {/* Right: Stage Sandbox */}
         <div className="flex-1 h-1/2 md:h-full overflow-hidden flex flex-col">
           <GameStage
             sandboxedHtml={sandboxedHtml}
@@ -139,24 +136,20 @@ export function PlaygroundStudio() {
         </div>
       </main>
 
-      {/* Modals */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        apiKey={apiKey}
-        model={model}
-        onSave={saveSettings}
+      {/* Publish & Share Modal */}
+      <PublishModal
+        isOpen={isPublishOpen}
+        onClose={() => setIsPublishOpen(false)}
+        code={currentProject.code}
+        defaultTitle={currentProject.title}
+        defaultPrompt={currentProject.prompt}
+        appId={currentProject.id !== 'blank' ? currentProject.id : undefined}
       />
 
+      {/* Export Modal */}
       <ExportModal
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
-        project={currentProject}
-      />
-
-      <ShareModal
-        isOpen={isShareOpen}
-        onClose={() => setIsShareOpen(false)}
         project={currentProject}
       />
     </div>

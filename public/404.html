@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Playground — Redirecting...</title>
+  <script type="text/javascript">
+    var l = window.location;
+    // Keep 1 path segment if on username.github.io/<repo>/, 0 if custom domain or localhost
+    var pathSegmentsToKeep = (l.hostname.endsWith('github.io') && l.pathname.split('/').filter(Boolean).length > 0) ? 1 : 0;
+    var redirectUrl = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+      l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
+      l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+      (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+      l.hash;
+    l.replace(redirectUrl);
+  </script>
+</head>
+<body>
+  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding-top: 100px; color: #64748b;">
+    <h2>Redirecting to Playground...</h2>
+  </div>
+</body>
+</html>

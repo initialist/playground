@@ -34,22 +34,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, onApplyManualCode 
   const byteSize = new Blob([activeContent]).size;
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-950 font-mono text-xs">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950 font-mono text-xs">
       {/* Editor Toolbar */}
-      <div className="h-10 px-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60 select-none">
-        <div className="flex items-center gap-2 text-zinc-400">
-          <FileCode className="w-3.5 h-3.5 text-violet-400" />
-          <span className="font-semibold text-zinc-300">index.html</span>
-          <span className="text-[10px] text-zinc-500">
+      <div className="h-10 px-3 border-b border-slate-800 flex items-center justify-between bg-slate-900 select-none">
+        <div className="flex items-center gap-2 text-slate-400">
+          <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+          <span className="font-semibold text-slate-200">index.html</span>
+          <span className="text-[10px] text-slate-500">
             ({lineCount} lines • {(byteSize / 1024).toFixed(1)} KB)
           </span>
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* Copy Button */}
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 px-2 py-1 rounded bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors text-[11px]"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors text-[11px]"
             title="Copy Code"
           >
             {copied ? (
@@ -65,11 +64,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, onApplyManualCode 
             )}
           </button>
 
-          {/* Edit/View Toggle */}
           {isEditing ? (
             <button
               onClick={() => setIsEditing(false)}
-              className="flex items-center gap-1 px-2 py-1 rounded bg-violet-600 text-white transition-colors text-[11px]"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors text-[11px]"
             >
               <Eye className="w-3 h-3" />
               <span>View Mode</span>
@@ -77,38 +75,37 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, onApplyManualCode 
           ) : (
             <button
               onClick={handleStartEdit}
-              className="flex items-center gap-1 px-2 py-1 rounded bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors text-[11px]"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors text-[11px]"
             >
               <Edit3 className="w-3 h-3" />
-              <span>Manual Edit</span>
+              <span>Edit Code</span>
             </button>
           )}
 
-          {/* Apply Button */}
           {isEditing && (
             <button
               onClick={handleApply}
-              className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors text-[11px]"
+              className="flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors text-[11px]"
             >
               <Play className="w-3 h-3 fill-current" />
-              <span>Run Edited Code</span>
+              <span>Run Code</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Editor / Viewer Body */}
-      <div className="flex-1 overflow-auto p-4 leading-5">
+      {/* Code Editor / Viewer Body */}
+      <div className="flex-1 overflow-auto p-4 leading-relaxed">
         {isEditing ? (
           <textarea
             value={editedCode}
             onChange={(e) => setEditedCode(e.target.value)}
-            className="w-full h-full bg-transparent text-zinc-200 font-mono text-xs resize-none focus:outline-none whitespace-pre"
+            className="w-full h-full bg-transparent text-slate-200 font-mono text-xs resize-none focus:outline-none whitespace-pre selection:bg-indigo-600 selection:text-white"
             spellCheck={false}
           />
         ) : (
-          <pre className="text-zinc-300 whitespace-pre overflow-x-auto selection:bg-violet-900/50">
-            <code>{code}</code>
+          <pre className="text-slate-300 whitespace-pre overflow-x-auto selection:bg-indigo-600 selection:text-white">
+            <code>{code || '// Canvas is empty. Prompt an idea on the copilot to generate code.'}</code>
           </pre>
         )}
       </div>

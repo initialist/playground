@@ -9,18 +9,31 @@ import {
   SandboxErrorPayload,
   DeviceMode,
 } from '@/types/playground';
-import { STARTER_GAMES } from '@/data/starter-games';
 import { parseAIStream } from './code-parser';
 import { injectSandboxHarness } from './sandbox-harness';
+import { apiUrl, getAuthToken } from './api';
 
-const STORAGE_API_KEY = 'playground_gemini_api_key';
-const STORAGE_MODEL = 'playground_gemini_model';
-const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+function generateUniqueId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
-export function usePlayground() {
-  // Game & Project State
-  const [currentProject, setCurrentProject] = useState<GameProject>(STARTER_GAMES[0]);
-  const [history, setHistory] = useState<GameProject[]>([STARTER_GAMES[0]]);
+export const BLANK_APP: GameProject = {
+  id: 'blank',
+  title: 'Untitled Mini-App',
+  prompt: '',
+  code: '',
+  version: 0,
+  createdAt: 0,
+  updatedAt: 0,
+};
+
+export function usePlayground(initialApp?: GameProject | null) {
+  // Mini-App & Project State (Clean Canvas by default)
+  const [currentProject, setCurrentProject] = useState<GameProject>(() => initialApp || BLANK_APP);
+  const [history, setHistory] = useState<GameProject[]>(() => (initialApp && initialApp.code ? [initialApp] : []));
   const [deviceMode, setDeviceMode] = useState<DeviceMode>('desktop');
   const [activeTab, setActiveTab] = useState<'copilot' | 'code' | 'history'>('copilot');
 
@@ -30,9 +43,11 @@ export function usePlayground() {
     {
       id: 'step-init',
       stage: 'ready',
-      title: 'Ready',
-      detail: 'Playground studio loaded with Cosmic Defender.',
-      timestamp: 1740000000000,
+      title: 'Studio Ready',
+      detail: initialApp?.code
+        ? `Loaded "${initialApp.title}". You can prompt refinements or test the app.`
+        : 'Describe your mini-app idea below to start building with Gemini 3.5 Flash Lite.',
+      timestamp: initialApp?.createdAt || 1740000000000,
       status: 'success',
     },
   ]);
@@ -44,21 +59,8 @@ export function usePlayground() {
   const [consoleLogs, setConsoleLogs] = useState<ConsoleMessage[]>([]);
   const [lastError, setLastError] = useState<SandboxErrorPayload | null>(null);
 
-  // Settings
-  const [apiKey, setApiKey] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_API_KEY) || '';
-    }
-    return '';
-  });
-  const [model, setModel] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_MODEL) || DEFAULT_MODEL;
-    }
-    return DEFAULT_MODEL;
-  });
-
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  // Modals
+  const [isPublishOpen, setIsPublishOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isShareOpen, setIsShareOpen] = useState<boolean>(false);
 
@@ -73,16 +75,7 @@ export function usePlayground() {
     activeCodeRef.current = currentProject.code;
   }, [currentProject.code]);
 
-  const saveSettings = (newKey: string, newModel: string) => {
-    setApiKey(newKey);
-    setModel(newModel);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_API_KEY, newKey);
-      localStorage.setItem(STORAGE_MODEL, newModel);
-    }
-  };
-
-  // Add a thought step helper
+  // Add thought step helper
   const addThought = useCallback((
     stage: AgentStage,
     title: string,
@@ -90,7 +83,7 @@ export function usePlayground() {
     status: 'pending' | 'in_progress' | 'success' | 'error' = 'in_progress'
   ) => {
     const newStep: AgentThoughtStep = {
-      id: `thought-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateUniqueId('thought'),
       stage,
       title,
       detail,
@@ -120,6 +113,27 @@ export function usePlayground() {
     addThought('ready', 'Operation Cancelled', 'Generation or repair was cancelled by user.', 'success');
   }, [addThought]);
 
+  // Start a fresh new project (New App button)
+  const resetToNewApp = useCallback(() => {
+    cancelOperation();
+    setCurrentProject(BLANK_APP);
+    setHistory([]);
+    setConsoleLogs([]);
+    setLastError(null);
+    setRepairAttempts(0);
+    setThoughtSteps([
+      {
+        id: generateUniqueId('step-init'),
+        stage: 'ready',
+        title: 'New Canvas Ready',
+        detail: 'Started fresh project. Enter a prompt to build a new mini-app!',
+        timestamp: Date.now(),
+        status: 'success',
+      },
+    ]);
+    setAgentStage('ready');
+  }, [cancelOperation]);
+
   // Sandbox Health Watcher
   const startDiagnosticWatch = useCallback(() => {
     if (diagnosticTimeoutRef.current) clearTimeout(diagnosticTimeoutRef.current);
@@ -135,24 +149,13 @@ export function usePlayground() {
         }
         return prev;
       });
-    }, 2000);
+    }, 1500);
   }, []);
 
   // AUTO REPAIR: Mini Agentic Loop trigger
   const triggerAutoRepair = useCallback(
     async (errorPayload: SandboxErrorPayload) => {
       if (isRepairingRef.current) return;
-
-      if (!apiKey) {
-        setAgentStage('error');
-        addThought(
-          'error',
-          'Runtime Issue Detected',
-          `"${errorPayload.message}" (Line ${errorPayload.lineno || '?'}). Configure your Gemini API key in Settings to enable automatic self-healing.`,
-          'error'
-        );
-        return;
-      }
 
       if (repairAttempts >= 2) {
         setAgentStage('error');
@@ -169,7 +172,7 @@ export function usePlayground() {
       setIsGenerating(true);
       setRepairAttempts(prev => prev + 1);
       setAgentStage('healing');
-      setStreamingStatus(`Diagnosing: "${errorPayload.message}"...`);
+      setStreamingStatus(`Diagnosing error: "${errorPayload.message}"...`);
 
       const stepId = addThought(
         'healing',
@@ -183,16 +186,18 @@ export function usePlayground() {
       const timeoutId = setTimeout(() => controller.abort(), 45000);
 
       try {
-        const response = await fetch('/api/repair', {
+        const token = getAuthToken();
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const response = await fetch(apiUrl('/api/repair'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           signal: controller.signal,
           body: JSON.stringify({
             code: activeCodeRef.current,
             error: errorPayload,
             prompt: currentProject.prompt,
-            apiKey: apiKey || undefined,
-            model,
           }),
         });
 
@@ -224,13 +229,13 @@ export function usePlayground() {
         if (finalParsed.code) {
           updateThought(stepId, {
             status: 'success',
-            detail: `Resolved "${errorPayload.message}". Reloading in sandbox...`,
+            detail: `Resolved "${errorPayload.message}". Sandbox reloading to verify probe...`,
           });
 
           const updatedProject: GameProject = {
             ...currentProject,
             code: finalParsed.code,
-            version: currentProject.version + 1,
+            version: (currentProject.version || 0) + 1,
             updatedAt: Date.now(),
           };
           setCurrentProject(updatedProject);
@@ -262,7 +267,7 @@ export function usePlayground() {
         setStreamingStatus('');
       }
     },
-    [repairAttempts, currentProject, apiKey, model, addThought, updateThought, startDiagnosticWatch]
+    [repairAttempts, currentProject, addThought, updateThought, startDiagnosticWatch]
   );
 
   // Message listener from iframe sandbox
@@ -282,40 +287,58 @@ export function usePlayground() {
         setConsoleLogs(prev => [
           ...prev,
           {
-            id: `err-${Date.now()}`,
+            id: generateUniqueId('err'),
             type: 'error',
             message: `Runtime Error: ${payload.message} (Line ${payload.lineno || '?'})`,
             timestamp: Date.now(),
           },
         ]);
 
-        // Auto-heal if an API key is available and not already busy
         if (!isGenerating && !isRepairingRef.current) {
           triggerAutoRepair(payload);
         }
       } else if (data.type === 'PLAYGROUND_CONSOLE') {
-        setConsoleLogs(prev => {
-          const next = [
-            ...prev.slice(-150),
-            {
-              id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-              type: data.level || 'log',
-              message: data.message,
-              timestamp: data.timestamp || Date.now(),
-            },
-          ];
-          return next;
-        });
+        setConsoleLogs(prev => [
+          ...prev.slice(-150),
+          {
+            id: generateUniqueId('log'),
+            type: data.level || 'log',
+            message: data.message,
+            timestamp: data.timestamp || Date.now(),
+          },
+        ]);
+      } else if (data.type === 'PLAYGROUND_VERIFIED') {
+        const { status, details } = data;
+        if (status === 'passed') {
+          setAgentStage('ready');
+          setRepairAttempts(0);
+          addThought(
+            'testing',
+            '✅ Runtime Verified (4-Point Probe)',
+            details.message || 'App initialized cleanly with 0 console errors.',
+            'success'
+          );
+        } else if (status === 'error') {
+          addThought(
+            'error',
+            '⚠️ Probe Detected Runtime Failure',
+            details.message || 'Errors detected during initial execution.',
+            'error'
+          );
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [isGenerating, triggerAutoRepair]);
+  }, [isGenerating, triggerAutoRepair, addThought]);
 
-  // GENERATE GAME: Main creation & iteration function
-  const generateGame = async (promptText: string, isIteration = false) => {
+  // GENERATE GAME / MINI-APP: Main creation & iteration function
+  const generateGame = async (promptText: string) => {
     if (!promptText.trim()) return;
+
+    // Check if iterating on an existing app or creating from blank canvas
+    const isIteration = Boolean(currentProject.code && currentProject.code.trim().length > 0);
 
     setIsGenerating(true);
     setRepairAttempts(0);
@@ -325,7 +348,7 @@ export function usePlayground() {
 
     const planStepId = addThought(
       'planning',
-      isIteration ? 'Analyzing Iteration Request' : 'Architecting Game Mechanics',
+      isIteration ? 'Analyzing Iteration Request' : 'Architecting Mini-App Architecture',
       promptText,
       'in_progress'
     );
@@ -333,18 +356,20 @@ export function usePlayground() {
     let codeStepId = '';
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s generation timeout
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
-      const response = await fetch('/api/generate', {
+      const token = getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(apiUrl('/api/generate'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         signal: controller.signal,
         body: JSON.stringify({
           prompt: promptText,
           currentCode: isIteration ? currentProject.code : undefined,
-          apiKey: apiKey || undefined,
-          model,
         }),
       });
 
@@ -382,7 +407,7 @@ export function usePlayground() {
 
         if (codeStarted && parsed.code) {
           const kb = (parsed.code.length / 1024).toFixed(1);
-          setStreamingStatus(`Generating game assets & loop... (${kb} KB)`);
+          setStreamingStatus(`Generating mini-app code... (${kb} KB)`);
           if (codeStepId) {
             updateThought(codeStepId, {
               detail: `Streaming code: ${kb} KB generated...`,
@@ -399,15 +424,17 @@ export function usePlayground() {
       if (codeStepId) {
         updateThought(codeStepId, {
           status: 'success',
-          detail: `Generated complete ${(finalParsed.code.length / 1024).toFixed(1)} KB game application.`,
+          detail: `Generated complete ${(finalParsed.code.length / 1024).toFixed(1)} KB application.`,
         });
       }
 
-      const titleMatch = promptText.slice(0, 30).trim();
-      const newTitle = isIteration ? currentProject.title : `${titleMatch.charAt(0).toUpperCase() + titleMatch.slice(1)}`;
+      const titleMatch = promptText.slice(0, 32).trim();
+      const newTitle = isIteration
+        ? currentProject.title
+        : `${titleMatch.charAt(0).toUpperCase() + titleMatch.slice(1)}`;
 
       const newProject: GameProject = {
-        id: `project-${Date.now()}`,
+        id: isIteration ? currentProject.id : generateUniqueId('project'),
         title: newTitle,
         prompt: promptText,
         code: finalParsed.code,
@@ -419,7 +446,7 @@ export function usePlayground() {
       setCurrentProject(newProject);
       setHistory(prev => [newProject, ...prev]);
 
-      addThought('testing', 'Verifying Sandbox Diagnostics', 'Testing execution in isolated frame...', 'in_progress');
+      addThought('testing', 'Running 4-Point Runtime Probe', 'Validating canvas render, animation loop & console logs...', 'in_progress');
       startDiagnosticWatch();
     } catch (err: unknown) {
       if (controller.signal.aborted) {
@@ -442,7 +469,7 @@ export function usePlayground() {
     const updated: GameProject = {
       ...currentProject,
       code: newCode,
-      version: currentProject.version + 1,
+      version: (currentProject.version || 0) + 1,
       updatedAt: Date.now(),
     };
     setCurrentProject(updated);
@@ -451,31 +478,9 @@ export function usePlayground() {
     startDiagnosticWatch();
   };
 
-  const loadStarter = (starterId: string) => {
-    const found = STARTER_GAMES.find(g => g.id === starterId);
-    if (found) {
-      setCurrentProject(found);
-      setHistory(prev => [found, ...prev]);
-      setThoughtSteps([
-        {
-          id: `step-${Date.now()}`,
-          stage: 'ready',
-          title: `Loaded ${found.title}`,
-          detail: found.prompt,
-          timestamp: 1740000000000,
-          status: 'success',
-        },
-      ]);
-      setAgentStage('ready');
-      setRepairAttempts(0);
-      isRepairingRef.current = false;
-      setLastError(null);
-    }
-  };
-
   const clearLogs = () => setConsoleLogs([]);
 
-  const sandboxedHtml = injectSandboxHarness(currentProject.code);
+  const sandboxedHtml = currentProject.code ? injectSandboxHarness(currentProject.code) : '';
 
   return {
     currentProject,
@@ -494,20 +499,17 @@ export function usePlayground() {
     clearLogs,
     lastError,
     setLastError,
-    apiKey,
-    model,
-    saveSettings,
-    isSettingsOpen,
-    setIsSettingsOpen,
+    isPublishOpen,
+    setIsPublishOpen,
     isExportOpen,
     setIsExportOpen,
     isShareOpen,
     setIsShareOpen,
     generateGame,
     cancelOperation,
+    resetToNewApp,
     triggerAutoRepair,
     updateCodeManually,
-    loadStarter,
     sandboxedHtml,
   };
 }
