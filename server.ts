@@ -657,7 +657,7 @@ Fix the bug and provide the complete corrected HTML document.`;
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`> Playground Backend Server running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`> Playground Backend Server running on http://0.0.0.0:${PORT}`);
   console.log(`> Model locked to: ${GEMINI_MODEL}`);
 });

@@ -7,7 +7,7 @@
     "build": "next build",
     "postbuild": "cp public/404.html out/404.html",
     "start": "next start",
-    "server": "tsx server.ts",
+    "server": "prisma db push --skip-generate && tsx server.ts",
     "dev:server": "tsx watch server.ts",
     "lint": "eslint"
   },
