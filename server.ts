@@ -100,7 +100,7 @@ async function authMiddleware(req: Request, res: Response, next: NextFunction) {
 app.use(authMiddleware);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
